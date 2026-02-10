@@ -155,6 +155,41 @@ make vulture    # Detect dead code
 make show-mobile-screen  # Stream device screen to desktop
 ```
 
+## Auto Swiper (LIKE/PASS + WhatsApp notifications)
+
+This repo includes an **auto swiper** runner that:
+- captures UI XML + screenshot
+- extracts age with a robust cascade (XML labels → header parsing → OCR → AI fallback)
+- runs the existing DSPy feature extraction pipeline
+- optionally runs a lightweight Gemini vision rating step (if `GEMINI_API_KEY` is set)
+- applies your preferences (age/rating/body type/ethnicity)
+- executes LIKE/PASS via ADB
+- sends WhatsApp notifications via OpenClaw (optional)
+
+### Environment variables
+
+- `ADB_PATH` (optional): path to adb (default: `adb`)
+- `ADB_SERIAL` (optional): device serial (default: `emulator-5554`)
+- `GEMINI_API_KEY` (optional): enables the lightweight rating step
+- `GEMINI_MODEL` (optional): default `gemini-2.0-flash`
+
+### Preferences
+
+Edit: `src/config/preferences.yaml`
+
+### Dry run (safe)
+
+```bash
+cd ~/.openclaw/workspace/unhinged_repo
+python -m src.runner.auto_swiper --config src/config/preferences.yaml --dry-run --limit 5
+```
+
+### Live run (will actually swipe + send WhatsApp if enabled)
+
+```bash
+python -m src.runner.auto_swiper --config src/config/preferences.yaml --limit 20
+```
+
 ## Ethical Considerations
 
 ⚠️ **IMPORTANT ETHICAL NOTICE** ⚠️

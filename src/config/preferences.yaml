@@ -1,0 +1,29 @@
+# User preferences for auto-swiping
+# Copy this file and customize for your preferences
+
+age:
+  min: 18
+  max: 35
+
+rating:
+  min_threshold: 6.0  # 1-10 scale
+
+body_type:
+  require_slim_athletic: true
+
+ethnicity:
+  # Set allowed to null to disable ethnicity filtering
+  # Or specify a list like: ["caucasian"]
+  allowed: null
+
+notifications:
+  # WhatsApp group JID for notifications
+  whatsapp_group_jid: "120363424286297551@g.us"
+  notify_on_like: true
+  notify_on_pass: false  # Don't spam group with passes
+  send_screenshot_with_like: true
+
+rate_limits:
+  # Gemini free tier limits
+  max_requests_per_minute: 15
+  max_requests_per_day: 1500
