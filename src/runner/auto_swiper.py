@@ -255,6 +255,12 @@ async def _run_one_iteration(
     api = HingeAPI(dump_path)
     profile_info = api.get_profile_info()
 
+    # Fallback: if AgeExtractor couldn't find age but HingeAPI did, use it.
+    if age is None:
+        api_age = getattr(profile_info, "age", None)
+        if api_age is not None:
+            age = api_age
+
     photo_paths = _capture_profile_photos(api)
     if not photo_paths:
         print("[WARN] No photo crops captured; cannot analyze. Skipping.")
@@ -273,6 +279,7 @@ async def _run_one_iteration(
     ai_result = {
         "is_profile": True,
         "name": (getattr(profile, "name", None) if profile else None) or (profile_info.name or None),
+        "age": age,
         "reason": "DSPy profile analyzed" if profile else "DSPy analysis unavailable; using defaults",
         "red_flags": [],
         # defaults; may be overwritten
