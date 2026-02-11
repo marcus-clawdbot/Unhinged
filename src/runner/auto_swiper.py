@@ -336,7 +336,7 @@ async def _run_one_iteration(
         if api_age is not None:
             age = api_age
 
-    photo_paths = _capture_profile_photos(api)
+    photo_paths = _capture_profile_photos(api, max_photos=prefs.capture_max_photos)
     if not photo_paths:
         print("[WARN] No photo crops captured; cannot analyze. Skipping.")
         if not dry_run:

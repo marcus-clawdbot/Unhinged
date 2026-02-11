@@ -27,3 +27,7 @@ rate_limits:
   # Gemini free tier limits
   max_requests_per_minute: 15
   max_requests_per_day: 1500
+
+capture:
+  # How many photos to capture/analyze per profile
+  max_photos: 6

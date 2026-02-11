@@ -60,6 +60,9 @@ class Preferences:
     # Rate limits
     max_requests_per_minute: int = 15
     max_requests_per_day: int = 1500
+
+    # Capture
+    capture_max_photos: int = 6
     
     @classmethod
     def from_dict(cls, data: dict) -> "Preferences":
@@ -96,6 +99,11 @@ class Preferences:
             limits = data["rate_limits"]
             prefs.max_requests_per_minute = limits.get("max_requests_per_minute", prefs.max_requests_per_minute)
             prefs.max_requests_per_day = limits.get("max_requests_per_day", prefs.max_requests_per_day)
+
+        # Capture
+        if "capture" in data:
+            cap = data["capture"]
+            prefs.capture_max_photos = cap.get("max_photos", getattr(prefs, "capture_max_photos", 6))
         
         return prefs
 
