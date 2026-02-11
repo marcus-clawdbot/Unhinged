@@ -268,6 +268,18 @@ def open_hinge() -> None:
     time.sleep(2)
 
 
+def scroll_to_top(max_swipes: int = 6) -> None:
+    """Best-effort: ensure we're at the top of a profile before acting.
+
+    Hinge profiles can be left mid-scroll; this resets the view so the Like button for the first photo
+    is in a predictable location.
+    """
+    for _ in range(max_swipes):
+        # swipe down (content moves down) => user gesture is swipe DOWN on screen
+        swipe(540, 700, 540, 2000, 300)
+        time.sleep(0.25)
+
+
 # === Modal handling ===
 
 def close_modal_if_open(xml: str) -> bool:
@@ -339,18 +351,26 @@ def execute_skip(xml: str) -> bool:
 def execute_like(xml: str, message: Optional[str] = None) -> Tuple[bool, Optional[str]]:
     """
     Like current profile using Priority Like.
-    
+
+    We first scroll to the top of the profile, then like the *first photo*.
+    This avoids failures when the profile is mid-scroll and the Like button isn't present/visible.
+
     Args:
         xml: UI hierarchy XML
         message: Optional message to send with like (gigachad message)
-        
+
     Returns:
         Tuple of (success, message_sent)
     """
+    # Ensure we're at the top of the profile so the Like button is predictable.
+    scroll_to_top()
+    time.sleep(0.5)
+    xml = get_ui_xml() or xml
+
     # Tap "Like photo" button
     coords = find_button_coords(xml, "Like photo")
     if not coords:
-        coords = (938, 1347)  # Fallback position
+        coords = (938, 1347)  # Fallback position (first-photo heart)
         logger.debug(f"Using fallback Like photo coords: {coords}")
     else:
         logger.debug(f"Tapping Like photo at {coords}")

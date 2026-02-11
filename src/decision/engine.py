@@ -251,7 +251,18 @@ class DecisionEngine:
                     age=age,
                 )
         
-        # 5. Red flags check (optional - just log them)
+        # 5. Filter out trans women (hard pass)
+        # This is based on AI vision classification (see runner prompt field is_trans_woman).
+        if ai_result.get("is_trans_woman") is True:
+            return Decision(
+                action="PASS",
+                reason="Filtered: trans woman",
+                name=name,
+                rating=rating,
+                age=age,
+            )
+
+        # 6. Red flags check (optional - just log them)
         red_flags = ai_result.get("red_flags", [])
         if red_flags:
             logger.info(f"Profile has red flags: {red_flags}")

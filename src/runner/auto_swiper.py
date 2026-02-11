@@ -82,6 +82,7 @@ def _gemini_rate_profile(screenshot_path: str) -> Optional[dict]:
 {
   \"is_profile\": true/false,
   \"name\": \"name or null if not visible\",
+  \"is_trans_woman\": true/false,
   \"slim_athletic\": true/false,
   \"ethnicity\": \"description\",
   \"ethnicity_ok\": true/false,
@@ -91,8 +92,9 @@ def _gemini_rate_profile(screenshot_path: str) -> Optional[dict]:
   \"reason\": \"brief reason\"
 }
 
-If NOT a dating profile (home screen, other app, etc), set is_profile=false."""
+If NOT a dating profile (home screen, other app, etc), set is_profile=false.
 
+Mark \"is_trans_woman\" true if the profile indicates transgender / trans woman / MtF (including explicit text cues)."""
     payload = {
         "contents": [
             {
@@ -204,6 +206,10 @@ async def _run_one_iteration(
     if not xml:
         print("[WARN] No UI XML; skipping iteration")
         return False, last_gemini_ts
+
+    # Always reset to top of profile before doing anything else.
+    adb.scroll_to_top()
+    xml = adb.get_ui_xml() or xml
 
     # close blockers
     if adb.is_like_modal_open(xml):
