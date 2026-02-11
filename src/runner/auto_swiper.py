@@ -260,6 +260,7 @@ async def _run_one_iteration(
     dry_run: bool,
     aggressive: bool,
     last_gemini_ts: float,
+    fast: bool = False,
 ) -> tuple[bool, float]:
     """Returns (did_process_profile, last_gemini_ts)."""
 
@@ -336,43 +337,82 @@ async def _run_one_iteration(
         if api_age is not None:
             age = api_age
 
-    photo_paths = _capture_profile_photos(api, max_photos=prefs.capture_max_photos)
-    if not photo_paths:
-        print("[WARN] No photo crops captured; cannot analyze. Skipping.")
+    # Apply quick age filter AGAIN after HingeAPI fallback.
+    if age is not None and not engine.quick_age_filter(age):
         if not dry_run:
             adb.execute_skip(xml)
         return True, last_gemini_ts
 
-    # analyze_profile can be slow / can fail if LLM not configured.
-    try:
-        profile = await analyze_profile(profile_images=photo_paths, profile_info=profile_info)
-    except Exception as e:
-        print(f"[WARN] analyze_profile failed (continuing with defaults): {e}")
-        profile = None
+    if fast:
+        # FAST MODE: single screenshot + Gemini only; no photo capture, no DSPy.
+        # Fail-closed: if GEMINI_API_KEY missing or Gemini yields no rating => PASS/SKIP.
+        if not os.environ.get("GEMINI_API_KEY"):
+            if not dry_run:
+                adb.execute_skip(xml)
+            return True, last_gemini_ts
 
-    # build ai_result for DecisionEngine using gemini rating step (optional)
-    ai_result = {
-        "is_profile": True,
-        "name": (getattr(profile, "name", None) if profile else None) or (profile_info.name or None),
-        "age": age,
-        "is_trans_woman": bool(xml_is_trans),
-        "reason": "DSPy profile analyzed" if profile else "DSPy analysis unavailable; using defaults",
-        "red_flags": [],
-        # defaults; may be overwritten
-        "rating": None,
-        "slim_athletic": True,
-        "ethnicity_ok": True,
-        "ethnicity": None,
-    }
-
-    if screenshot_path and os.environ.get("GEMINI_API_KEY"):
         last_gemini_ts = _sleep_rate_limited(last_gemini_ts, prefs.max_requests_per_minute)
-        gem = _gemini_rate_profile(screenshot_path)
-        if gem:
-            ai_result.update(gem)
-            # Never let vision override the deterministic XML detection.
-            if xml_is_trans:
-                ai_result["is_trans_woman"] = True
+        gem = _gemini_rate_profile(screenshot_path2)
+        rating = gem.get("rating") if isinstance(gem, dict) else None
+        if rating is None:
+            if not dry_run:
+                adb.execute_skip(xml)
+            return True, last_gemini_ts
+
+        ai_result = {
+            "is_profile": True,
+            "name": (gem.get("name") if isinstance(gem, dict) else None) or (profile_info.name or None),
+            "age": age,
+            "is_trans_woman": bool(xml_is_trans),
+            "rating": rating,
+            "slim_athletic": bool(gem.get("slim_athletic")) if isinstance(gem, dict) and gem.get("slim_athletic") is not None else True,
+            "ethnicity_ok": bool(gem.get("ethnicity_ok")) if isinstance(gem, dict) and gem.get("ethnicity_ok") is not None else True,
+            "ethnicity": gem.get("ethnicity") if isinstance(gem, dict) else None,
+            "reason": gem.get("reason") if isinstance(gem, dict) else "Gemini fast-mode rating",
+            "red_flags": gem.get("red_flags") if isinstance(gem, dict) and isinstance(gem.get("red_flags"), list) else [],
+        }
+        # Never let vision override the deterministic XML detection.
+        if xml_is_trans:
+            ai_result["is_trans_woman"] = True
+
+    else:
+        photo_paths = _capture_profile_photos(api, max_photos=prefs.capture_max_photos)
+        if not photo_paths:
+            print("[WARN] No photo crops captured; cannot analyze. Skipping.")
+            if not dry_run:
+                adb.execute_skip(xml)
+            return True, last_gemini_ts
+
+        # analyze_profile can be slow / can fail if LLM not configured.
+        try:
+            profile = await analyze_profile(profile_images=photo_paths, profile_info=profile_info)
+        except Exception as e:
+            print(f"[WARN] analyze_profile failed (continuing with defaults): {e}")
+            profile = None
+
+        # build ai_result for DecisionEngine using gemini rating step (optional)
+        ai_result = {
+            "is_profile": True,
+            "name": (getattr(profile, "name", None) if profile else None) or (profile_info.name or None),
+            "age": age,
+            "is_trans_woman": bool(xml_is_trans),
+            "reason": "DSPy profile analyzed" if profile else "DSPy analysis unavailable; using defaults",
+            "red_flags": [],
+            # defaults; may be overwritten
+            "rating": None,
+            "slim_athletic": True,
+            "ethnicity_ok": True,
+            "ethnicity": None,
+        }
+
+        if screenshot_path and os.environ.get("GEMINI_API_KEY"):
+            last_gemini_ts = _sleep_rate_limited(last_gemini_ts, prefs.max_requests_per_minute)
+            gem = _gemini_rate_profile(screenshot_path)
+            if gem:
+                ai_result.update(gem)
+                # Never let vision override the deterministic XML detection.
+                if xml_is_trans:
+                    ai_result["is_trans_woman"] = True
 
     decision = engine.decide(age=age, ai_result=ai_result, override_like=aggressive)
 
@@ -415,6 +455,11 @@ def main():
     parser.add_argument("--limit", type=int, default=None, help="Max profiles to process")
     parser.add_argument("--hours", type=float, default=None, help="Run for N hours")
     parser.add_argument("--aggressive", action="store_true", help="Force LIKE regardless of filters")
+    parser.add_argument(
+        "--fast",
+        action="store_true",
+        help="Fast mode: single screenshot + Gemini only (skips DSPy analysis and photo capture)",
+    )
     args = parser.parse_args()
 
     prefs = Preferences.from_yaml(args.config)
@@ -450,6 +495,7 @@ def main():
                     dry_run=bool(args.dry_run),
                     aggressive=bool(args.aggressive),
                     last_gemini_ts=last_gemini_ts,
+                    fast=bool(args.fast),
                 )
             )
             if did:
