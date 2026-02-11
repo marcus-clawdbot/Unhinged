@@ -35,7 +35,8 @@ import base64
 
 # Silence noisy Langfuse "client disabled" logs when keys are not configured.
 if not os.environ.get("LANGFUSE_PUBLIC_KEY"):
-    logging.getLogger("langfuse").setLevel(logging.ERROR)
+    for _name in ("langfuse", "langfuse.client", "langfuse.decorators"):
+        logging.getLogger(_name).setLevel(logging.ERROR)
 
 from src.utils import adb_helpers as adb
 from src.extractors.age_extractor import AgeExtractor
@@ -163,8 +164,17 @@ Mark \"is_trans_woman\" true if the profile indicates transgender / trans woman 
         return None
 
 
-def _capture_profile_photos(api: HingeAPI, max_scrolls: int = 4, out_dir: str = "photo_dump") -> list[str]:
-    """Reuses the demo.py logic lightly: iterate subjects + scroll; capture cropped photos."""
+def _capture_profile_photos(
+    api: HingeAPI,
+    max_scrolls: int = 4,
+    out_dir: str = "photo_dump",
+    max_photos: int = 6,
+    max_seconds: float = 20.0,
+) -> list[str]:
+    """Iterate subjects + scroll; capture cropped photos.
+
+    Hard-stops to avoid getting stuck at the bottom of a long profile.
+    """
 
     import glob
 
@@ -177,7 +187,9 @@ def _capture_profile_photos(api: HingeAPI, max_scrolls: int = 4, out_dir: str = 
         except Exception:
             pass
 
+    start = time.time()
     processed_bounds = set()
+    no_new_streak = 0
 
     def is_valid(bounds) -> bool:
         if not bounds:
@@ -187,27 +199,57 @@ def _capture_profile_photos(api: HingeAPI, max_scrolls: int = 4, out_dir: str = 
         h = y2 - y1
         return h > 0 and (w / h) <= 1.5
 
-    def process_subjects():
+    def current_photos() -> list[str]:
+        return sorted([p for p in glob.glob(os.path.join(out_dir, "photo_*.png"))])
+
+    def process_subjects() -> int:
+        new_count = 0
         subjects = api.get_all_subjects()
         for subject_str, content, bounds in subjects:
             if ("[Image]" in subject_str) or ("photo" in subject_str.lower()):
                 if bounds and bounds not in processed_bounds and is_valid(bounds):
                     processed_bounds.add(bounds)
                     api.capture_subject_photo(SubjectPair(subject_str, content, None, bounds), out_dir)
+                    new_count += 1
+                    if len(processed_bounds) >= max_photos:
+                        break
+        return new_count
 
-    process_subjects()
+    new0 = process_subjects()
+    photos = current_photos()
+    print(f"[CAPTURE] start photos={len(photos)} new={new0}")
 
-    for _ in range(max_scrolls):
+    for i in range(max_scrolls):
+        if time.time() - start > max_seconds:
+            print(f"[CAPTURE] timeout after {max_seconds}s")
+            break
+        if len(photos) >= max_photos:
+            print(f"[CAPTURE] reached max_photos={max_photos}")
+            break
+
         adb.swipe(540, 1800, 540, 600, 500)
-        time.sleep(1)
+        time.sleep(0.9)
+
         # refresh api
         dump_path = adb.get_ui_dump(0)
         api.xml_path = dump_path
         api._update_profile_info()
         api.subject_pairs = api._parse_subjects_and_hearts()
-        process_subjects()
 
-    return sorted([p for p in glob.glob(os.path.join(out_dir, "photo_*.png"))])
+        new_n = process_subjects()
+        photos = current_photos()
+        print(f"[CAPTURE] scroll={i+1}/{max_scrolls} photos={len(photos)} new={new_n}")
+
+        if new_n == 0:
+            no_new_streak += 1
+        else:
+            no_new_streak = 0
+
+        if no_new_streak >= 2:
+            print("[CAPTURE] no new photos for 2 scrolls; stopping")
+            break
+
+    return photos
 
 
 async def _run_one_iteration(
