@@ -59,6 +59,25 @@ def _sleep_rate_limited(last_request_ts: float, rpm: int) -> float:
     return time.time()
 
 
+def _detect_trans_woman_from_xml(xml: str) -> bool:
+    """Deterministic detection based on UI XML text/content-desc.
+
+    Hinge often shows "Trans woman" as a detail chip near age. This is more reliable than vision.
+    """
+    if not xml:
+        return False
+    s = xml.lower()
+    keywords = [
+        "trans woman",
+        "transwoman",
+        "transgender",
+        "mtf",
+        "m2f",
+        "male-to-female",
+    ]
+    return any(k in s for k in keywords)
+
+
 def _gemini_rate_profile(screenshot_path: str) -> Optional[dict]:
     """Lightweight vision call to get rating/body type/ethnicity.
 
@@ -239,6 +258,9 @@ async def _run_one_iteration(
     xml2 = adb.get_ui_xml() or xml
     screenshot_path2 = adb.capture_screenshot_fast() or screenshot_path
 
+    # Deterministic trans-woman detection from UI XML (more reliable than vision).
+    xml_is_trans = _detect_trans_woman_from_xml(xml2)
+
     age = None
     # Age extractor should be best-effort; don't let OCR issues spam/kill loop.
     if screenshot_path2:
@@ -291,6 +313,7 @@ async def _run_one_iteration(
         "is_profile": True,
         "name": (getattr(profile, "name", None) if profile else None) or (profile_info.name or None),
         "age": age,
+        "is_trans_woman": bool(xml_is_trans),
         "reason": "DSPy profile analyzed" if profile else "DSPy analysis unavailable; using defaults",
         "red_flags": [],
         # defaults; may be overwritten
@@ -305,6 +328,9 @@ async def _run_one_iteration(
         gem = _gemini_rate_profile(screenshot_path)
         if gem:
             ai_result.update(gem)
+            # Never let vision override the deterministic XML detection.
+            if xml_is_trans:
+                ai_result["is_trans_woman"] = True
 
     decision = engine.decide(age=age, ai_result=ai_result, override_like=aggressive)
 
