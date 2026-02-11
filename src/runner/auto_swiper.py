@@ -220,7 +220,7 @@ async def _run_one_iteration(
     # PRIME the profile: Hinge often lazy-loads age/details only after a small scroll.
     # We scroll first, then re-dump UI and re-screenshot, then attempt age extraction.
     try:
-        adb.scroll_profile_details()
+        adb.prime_profile_details()
         time.sleep(0.5)
     except Exception:
         pass

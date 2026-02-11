@@ -400,8 +400,14 @@ def execute_like(xml: str, message: Optional[str] = None) -> Tuple[bool, Optiona
     return True, message
 
 
+def prime_profile_details() -> None:
+    """Small scroll to trigger lazy-loading of profile detail chips without skipping the top bio/prompt area."""
+    swipe(540, 1800, 540, 1400, 250)
+    time.sleep(0.35)
+
+
 def scroll_profile_details() -> None:
-    """Scroll the profile detail section into view."""
+    """Deeper scroll to bring more profile details into view (used for scraping/capture)."""
     for _ in range(2):
         swipe(540, 1800, 540, 600, 300)
         time.sleep(0.35)
