@@ -158,7 +158,7 @@ def get_ui_xml() -> Optional[str]:
 
 
 def is_hinge_profile(xml: str) -> bool:
-    """Check if we're on a Hinge profile screen (or like modal)."""
+    """Check if we're on a Hinge profile/discover context where automation is safe."""
     if not xml:
         return False
     if "co.hinge.app" not in xml:
@@ -169,10 +169,20 @@ def is_hinge_profile(xml: str) -> bool:
     # Like modal is open (also valid - we're on a profile)
     if "Send priority like" in xml or "Send a Rose" in xml:
         return True
-    # Discover tab or other Hinge screens
+    # Discover / Standouts tabs still count as "in hinge" but not necessarily on a profile card yet
     if "Discover" in xml or "Standouts" in xml:
         return True
     return False
+
+
+def ensure_discover_tab() -> None:
+    """Best-effort: go to the Discover tab.
+
+    Hinge has multiple bottom tabs. If we're on a different tab, profile automation can misfire.
+    We use a fixed coordinate tap for now (same as open_hinge()).
+    """
+    tap(108, 2195)
+    time.sleep(1.2)
 
 
 def is_like_modal_open(xml: str) -> bool:
@@ -263,9 +273,9 @@ def open_hinge() -> None:
     time.sleep(1)
     _adb_cmd(["shell", "monkey", "-p", HINGE_PKG, "-c", "android.intent.category.LAUNCHER", "1"])
     time.sleep(4)
-    # Tap Discover tab (known position)
-    tap(108, 2195)
-    time.sleep(2)
+    # Ensure Discover tab
+    ensure_discover_tab()
+    time.sleep(0.8)
 
 
 def scroll_to_top(max_swipes: int = 6) -> None:

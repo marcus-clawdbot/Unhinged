@@ -269,6 +269,10 @@ async def _run_one_iteration(
         print("[WARN] No UI XML; skipping iteration")
         return False, last_gemini_ts
 
+    # Ensure we're on Discover tab to avoid automating on the wrong Hinge section.
+    adb.ensure_discover_tab()
+    xml = adb.get_ui_xml() or xml
+
     # Always reset to top of profile before doing anything else.
     adb.scroll_to_top()
     xml = adb.get_ui_xml() or xml
