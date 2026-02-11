@@ -281,7 +281,12 @@ print(json.dumps(out))
                 env=env,
             )
             if result.returncode != 0:
-                logger.error(f"OCR error: {result.stderr[:120]}")
+                # Common case: pytesseract not installed in the interpreter used by this subprocess.
+                err = (result.stderr or "").strip()
+                if "No module named 'pytesseract'" in err or "No module named pytesseract" in err:
+                    logger.warning("OCR unavailable (pytesseract not installed). Install `pytesseract` + `tesseract` to enable OCR fallback.")
+                else:
+                    logger.error(f"OCR error: {err[:200]}")
                 return []
             
             texts = json.loads(result.stdout.strip() or "[]")

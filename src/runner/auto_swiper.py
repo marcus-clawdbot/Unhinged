@@ -261,6 +261,17 @@ async def _run_one_iteration(
 
     decision = engine.decide(age=age, ai_result=ai_result, override_like=aggressive)
 
+    # Always print a concise decision line (especially important for dry-run).
+    # Example: [DRY] age=34 rating=7 slim=True eth_ok=True => LIKE (reason...)
+    rating = ai_result.get("rating")
+    slim = ai_result.get("slim_athletic")
+    eth_ok = ai_result.get("ethnicity_ok")
+    name = ai_result.get("name")
+    prefix = "[DRY]" if dry_run else "[LIVE]"
+    print(
+        f"{prefix} name={name!r} age={age} rating={rating} slim_athletic={slim} ethnicity_ok={eth_ok} => {decision.action} :: {decision.reason}"
+    )
+
     if dry_run:
         return True, last_gemini_ts
 
