@@ -197,6 +197,7 @@ async def _run_one_iteration(
 
     xml = adb.get_ui_xml()
     if not xml:
+        print("[WARN] No UI XML; skipping iteration")
         return False, last_gemini_ts
 
     # close blockers
@@ -216,9 +217,32 @@ async def _run_one_iteration(
 
     screenshot_path = adb.capture_screenshot_fast()
 
+    # PRIME the profile: Hinge often lazy-loads age/details only after a small scroll.
+    # We scroll first, then re-dump UI and re-screenshot, then attempt age extraction.
+    try:
+        adb.scroll_profile_details()
+        time.sleep(0.5)
+    except Exception:
+        pass
+
+    xml2 = adb.get_ui_xml() or xml
+    screenshot_path2 = adb.capture_screenshot_fast() or screenshot_path
+
     age = None
-    if screenshot_path:
-        age = age_extractor.extract(xml, screenshot_path)
+    # Age extractor should be best-effort; don't let OCR issues spam/kill loop.
+    if screenshot_path2:
+        try:
+            age = age_extractor.extract(xml2, screenshot_path2)
+        except Exception as e:
+            print(f"[WARN] age_extractor failed: {e}")
+            age = None
+
+    # Fallback: try the original artifacts too
+    if age is None and screenshot_path:
+        try:
+            age = age_extractor.extract(xml, screenshot_path)
+        except Exception:
+            age = None
 
     # fast age filter
     if age is not None and not engine.quick_age_filter(age):
@@ -233,18 +257,23 @@ async def _run_one_iteration(
 
     photo_paths = _capture_profile_photos(api)
     if not photo_paths:
-        # can't analyze; skip
+        print("[WARN] No photo crops captured; cannot analyze. Skipping.")
         if not dry_run:
             adb.execute_skip(xml)
         return True, last_gemini_ts
 
-    profile = await analyze_profile(profile_images=photo_paths, profile_info=profile_info)
+    # analyze_profile can be slow / can fail if LLM not configured.
+    try:
+        profile = await analyze_profile(profile_images=photo_paths, profile_info=profile_info)
+    except Exception as e:
+        print(f"[WARN] analyze_profile failed (continuing with defaults): {e}")
+        profile = None
 
     # build ai_result for DecisionEngine using gemini rating step (optional)
     ai_result = {
         "is_profile": True,
-        "name": profile.name or (profile_info.name or None),
-        "reason": "DSPy profile analyzed",
+        "name": (getattr(profile, "name", None) if profile else None) or (profile_info.name or None),
+        "reason": "DSPy profile analyzed" if profile else "DSPy analysis unavailable; using defaults",
         "red_flags": [],
         # defaults; may be overwritten
         "rating": None,
