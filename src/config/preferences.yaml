@@ -9,12 +9,12 @@ rating:
   min_threshold: 6.0  # 1-10 scale
 
 body_type:
-  require_slim_athletic: true
+  require_slim_athletic: false 
 
 ethnicity:
   # Set allowed to null to disable ethnicity filtering
   # Or specify a list like: ["caucasian"]
-  allowed: null
+  allowed: ["caucasian", "unknown"] 
 
 notifications:
   # WhatsApp group JID for notifications

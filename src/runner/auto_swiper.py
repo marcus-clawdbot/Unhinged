@@ -359,6 +359,15 @@ async def _run_one_iteration(
                 adb.execute_skip(xml)
             return True, last_gemini_ts
 
+        # Ethnicity handling: if Gemini can't determine ethnicity, treat it as "unknown" and allow it.
+        eth = gem.get("ethnicity") if isinstance(gem, dict) else None
+        eth_ok_raw = gem.get("ethnicity_ok") if isinstance(gem, dict) else None
+        if eth is None:
+            eth = "unknown"
+            eth_ok = True
+        else:
+            eth_ok = bool(eth_ok_raw) if eth_ok_raw is not None else True
+
         ai_result = {
             "is_profile": True,
             "name": (gem.get("name") if isinstance(gem, dict) else None) or (profile_info.name or None),
@@ -366,8 +375,8 @@ async def _run_one_iteration(
             "is_trans_woman": bool(xml_is_trans),
             "rating": rating,
             "slim_athletic": bool(gem.get("slim_athletic")) if isinstance(gem, dict) and gem.get("slim_athletic") is not None else True,
-            "ethnicity_ok": bool(gem.get("ethnicity_ok")) if isinstance(gem, dict) and gem.get("ethnicity_ok") is not None else True,
-            "ethnicity": gem.get("ethnicity") if isinstance(gem, dict) else None,
+            "ethnicity_ok": eth_ok,
+            "ethnicity": eth,
             "reason": gem.get("reason") if isinstance(gem, dict) else "Gemini fast-mode rating",
             "red_flags": gem.get("red_flags") if isinstance(gem, dict) and isinstance(gem.get("red_flags"), list) else [],
         }
