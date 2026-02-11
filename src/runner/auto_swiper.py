@@ -423,6 +423,13 @@ async def _run_one_iteration(
             gem = _gemini_rate_profile(screenshot_path)
             if gem:
                 ai_result.update(gem)
+
+                # Lenient normalization: if ethnicity is missing/null, treat as unknown+allowed.
+                # This avoids false rejections when Gemini fails to classify ethnicity.
+                if ai_result.get("ethnicity") is None:
+                    ai_result["ethnicity"] = "unknown"
+                    ai_result["ethnicity_ok"] = True
+
                 # Never let vision override the deterministic XML detection.
                 if xml_is_trans:
                     ai_result["is_trans_woman"] = True
