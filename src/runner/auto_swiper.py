@@ -25,12 +25,17 @@ import asyncio
 import json
 import os
 import time
+import logging
 from dataclasses import asdict
 from datetime import datetime, timezone, timedelta
 from typing import Optional, Any
 
 import requests
 import base64
+
+# Silence noisy Langfuse "client disabled" logs when keys are not configured.
+if not os.environ.get("LANGFUSE_PUBLIC_KEY"):
+    logging.getLogger("langfuse").setLevel(logging.ERROR)
 
 from src.utils import adb_helpers as adb
 from src.extractors.age_extractor import AgeExtractor
