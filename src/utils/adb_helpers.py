@@ -24,29 +24,58 @@ HINGE_PKG = "co.hinge.app"
 
 # === Core ADB primitives ===
 
-def _adb_cmd(args: list, timeout: int = 30) -> Optional[str]:
-    """Run ADB command and return stdout."""
+def _adb_cmd(args: list, timeout: int = 120, retries: int = 3) -> Optional[str]:
+    """Run ADB command and return stdout.
+
+    Retries up to *retries* times with exponential backoff on transient
+    failures (timeout or subprocess error).
+    """
     cmd = [ADB_PATH, "-s", ADB_SERIAL] + args
-    try:
-        result = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
-        return result.stdout
-    except subprocess.TimeoutExpired:
-        logger.error(f"ADB timeout: {' '.join(cmd[:4])}")
-        return None
-    except Exception as e:
-        logger.error(f"ADB error: {e}")
-        return None
+    for attempt in range(1, retries + 1):
+        try:
+            result = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
+            return result.stdout
+        except subprocess.TimeoutExpired:
+            logger.warning(
+                f"ADB timeout (attempt {attempt}/{retries}): {' '.join(cmd[:4])}"
+            )
+        except Exception as e:
+            logger.warning(
+                f"ADB error (attempt {attempt}/{retries}): {e}"
+            )
+        if attempt < retries:
+            backoff = min(2 ** attempt, 16)  # 2, 4, … capped at 16s
+            logger.info(f"Retrying in {backoff}s …")
+            time.sleep(backoff)
+    logger.error(f"ADB command failed after {retries} attempts: {' '.join(cmd[:4])}")
+    return None
 
 
-def _adb_cmd_bin(args: list, timeout: int = 30) -> Optional[bytes]:
-    """Run ADB command and return binary stdout."""
+def _adb_cmd_bin(args: list, timeout: int = 120, retries: int = 3) -> Optional[bytes]:
+    """Run ADB command and return binary stdout.
+
+    Retries up to *retries* times with exponential backoff on transient
+    failures (timeout or subprocess error).
+    """
     cmd = [ADB_PATH, "-s", ADB_SERIAL] + args
-    try:
-        result = subprocess.run(cmd, capture_output=True, timeout=timeout)
-        return result.stdout
-    except Exception as e:
-        logger.error(f"ADB binary error: {e}")
-        return None
+    for attempt in range(1, retries + 1):
+        try:
+            result = subprocess.run(cmd, capture_output=True, timeout=timeout)
+            return result.stdout
+        except subprocess.TimeoutExpired:
+            logger.warning(
+                f"ADB binary timeout (attempt {attempt}/{retries}): {' '.join(cmd[:4])}"
+            )
+        except Exception as e:
+            logger.warning(
+                f"ADB binary error (attempt {attempt}/{retries}): {e}"
+            )
+        if attempt < retries:
+            backoff = min(2 ** attempt, 16)
+            logger.info(f"Retrying in {backoff}s …")
+            time.sleep(backoff)
+    logger.error(f"ADB binary command failed after {retries} attempts: {' '.join(cmd[:4])}")
+    return None
 
 
 def tap(x: int, y: int) -> None:
