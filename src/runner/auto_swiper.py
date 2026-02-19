@@ -268,6 +268,7 @@ async def _run_one_iteration(
     if not xml:
         print("[WARN] No UI XML; skipping iteration")
         return False, last_gemini_ts
+    print(f"[DEBUG] UI XML length: {len(xml)}")
 
     # Ensure we're on Discover tab to avoid automating on the wrong Hinge section.
     adb.ensure_discover_tab()
@@ -286,11 +287,15 @@ async def _run_one_iteration(
         xml = adb.get_ui_xml() or xml
 
     if not adb.is_hinge_profile(xml):
+        print("[DEBUG] is_hinge_profile returned False, opening Hinge")
         adb.open_hinge()
         time.sleep(2)
         xml = adb.get_ui_xml() or ""
         if not adb.is_hinge_profile(xml):
+            print("[DEBUG] Still not a Hinge profile after opening, skipping")
             return False, last_gemini_ts
+    else:
+        print("[DEBUG] is_hinge_profile returned True")
 
     screenshot_path = adb.capture_screenshot_fast()
 
@@ -469,6 +474,7 @@ async def _run_one_iteration(
 
 
 def main():
+    print("[DEBUG] main() started")
     parser = argparse.ArgumentParser(description="Unhinged auto swiper")
     parser.add_argument("--config", default="src/config/preferences.yaml", help="Path to preferences YAML")
     parser.add_argument("--dry-run", action="store_true", help="Do not execute swipes or send WhatsApp")
@@ -481,15 +487,20 @@ def main():
         help="Fast mode: single screenshot + Gemini only (skips DSPy analysis and photo capture)",
     )
     args = parser.parse_args()
+    print("[DEBUG] args parsed")
 
+    print('[DEBUG] Loading preferences...')
     prefs = Preferences.from_yaml(args.config)
+    print('[DEBUG] Creating DecisionEngine...')
     engine = DecisionEngine(preferences=prefs)
+    print('[DEBUG] Creating AgeExtractor...')
     age_extractor = AgeExtractor()
-
+    print('[DEBUG] Creating WhatsAppNotifier...')
     notifier = WhatsAppNotifier(
         group_jid=prefs.whatsapp_group_jid or "",
         enabled=(not args.dry_run) and bool(prefs.whatsapp_group_jid) and (prefs.notify_on_like or prefs.notify_on_pass),
     )
+    print('[DEBUG] Initialisation complete')
 
     start = _now_utc()
     end = None
@@ -506,6 +517,7 @@ def main():
             if end is not None and _now_utc() >= end:
                 break
 
+            print(f'[DEBUG] Starting iteration {processed}')
             did, last_gemini_ts = asyncio.run(
                 _run_one_iteration(
                     prefs=prefs,
@@ -518,6 +530,7 @@ def main():
                     fast=bool(args.fast),
                 )
             )
+            print(f'[DEBUG] Iteration result: did={did}')
             if did:
                 processed += 1
             time.sleep(1)
