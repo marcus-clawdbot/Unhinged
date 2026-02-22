@@ -441,18 +441,23 @@ async def _run_one_iteration(
 
     if decision.action == "LIKE":
         ok, _ = adb.execute_like(xml)
+        print(f"[NOTIFY] LIKE executed: ok={ok} notify_on_like={prefs.notify_on_like} group_jid={prefs.whatsapp_group_jid!r} notifier_enabled={notifier.enabled}")
         if ok and prefs.notify_on_like and prefs.whatsapp_group_jid:
-            notifier.send_like_notification(
+            result = notifier.send_like_notification(
                 name=decision.name,
                 rating=decision.rating,
                 reason=decision.reason,
                 age=decision.age,
                 screenshot_path=screenshot_path if prefs.send_screenshot_with_like else None,
             )
+            print(f"[NOTIFY] send_like_notification result: success={result.success} error={result.error}")
+        else:
+            print(f"[NOTIFY] skipped: ok={ok} notify_on_like={prefs.notify_on_like} has_jid={bool(prefs.whatsapp_group_jid)}")
     elif decision.action in ("PASS", "SKIP"):
         adb.execute_skip(xml)
         if prefs.notify_on_pass and prefs.whatsapp_group_jid:
-            notifier.send_pass_notification(name=decision.name, reason=decision.reason, age=decision.age)
+            result = notifier.send_pass_notification(name=decision.name, reason=decision.reason, age=decision.age)
+            print(f"[NOTIFY] send_pass_notification result: success={result.success} error={result.error}")
 
     return True, last_gemini_ts
 
@@ -479,10 +484,11 @@ def main():
     engine = DecisionEngine(preferences=prefs)
     print('[DEBUG] Creating AgeExtractor...')
     age_extractor = AgeExtractor()
-    print('[DEBUG] Creating WhatsAppNotifier...')
+    notifier_enabled = (not args.dry_run) and bool(prefs.whatsapp_group_jid) and (prefs.notify_on_like or prefs.notify_on_pass)
+    print(f'[DEBUG] Creating WhatsAppNotifier... enabled={notifier_enabled} dry_run={args.dry_run} jid={prefs.whatsapp_group_jid!r} notify_on_like={prefs.notify_on_like}')
     notifier = WhatsAppNotifier(
         group_jid=prefs.whatsapp_group_jid or "",
-        enabled=(not args.dry_run) and bool(prefs.whatsapp_group_jid) and (prefs.notify_on_like or prefs.notify_on_pass),
+        enabled=notifier_enabled,
     )
     print('[DEBUG] Initialisation complete')
 
