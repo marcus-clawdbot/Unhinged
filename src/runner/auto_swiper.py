@@ -26,17 +26,11 @@ import json
 import os
 import time
 import logging
-from dataclasses import asdict
 from datetime import datetime, timezone, timedelta
 from typing import Optional, Any
 
 import requests
 import base64
-
-# Silence noisy Langfuse "client disabled" logs when keys are not configured.
-if not os.environ.get("LANGFUSE_PUBLIC_KEY"):
-    for _name in ("langfuse", "langfuse.client", "langfuse.decorators"):
-        logging.getLogger(_name).setLevel(logging.ERROR)
 
 from src.utils import adb_helpers as adb
 from src.extractors.age_extractor import AgeExtractor
@@ -271,8 +265,10 @@ async def _run_one_iteration(
     print(f"[DEBUG] UI XML length: {len(xml)}")
 
     # Ensure we're on Discover tab to avoid automating on the wrong Hinge section.
+    print('[DEBUG] Calling ensure_discover_tab')
     adb.ensure_discover_tab()
     xml = adb.get_ui_xml() or xml
+    print(f'[DEBUG] After ensure_discover_tab, XML length: {len(xml)}')
 
     # Always reset to top of profile before doing anything else.
     adb.scroll_to_top()

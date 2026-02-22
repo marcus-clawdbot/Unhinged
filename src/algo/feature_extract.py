@@ -7,7 +7,6 @@ from PIL import Image
 import glob
 import os
 import asyncio
-from langfuse.decorators import observe
 from src.mobile_api.api import ProfileInfo
 
 class InferPhotoFeatures(dspy.Signature):
@@ -110,7 +109,6 @@ def map_relationship_to_dating_style(relationship_type: Optional[str]) -> Dating
     else:
         return DatingStyle.UNKNOWN
 
-@observe()
 async def analyze_profile(
     profile_images: list[str],
     profile_info: ProfileInfo,
@@ -215,7 +213,6 @@ async def analyze_profile(
         inferred_personality_traits=profile_result.inferred_personality_traits or []
     )
 
-@observe()
 async def main():
     # Get all profile photos
     profile_photos = sorted(glob.glob("profile_photos/photo_*.png"))

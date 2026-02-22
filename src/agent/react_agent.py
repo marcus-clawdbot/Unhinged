@@ -9,9 +9,8 @@ from tenacity import (
     wait_exponential,
     retry_if_exception_type
 )
-from src.agent.dspy_langfuse import LangFuseDSPYCallback
 from litellm import ServiceUnavailableError
-from langfuse.decorators import observe
+
 
 class ReactAgent: # Renamed from ReactAgentWithMemory
     def __init__(
@@ -28,9 +27,7 @@ class ReactAgent: # Renamed from ReactAgentWithMemory
             temperature=global_config.weird_quirk.temperature,
             max_tokens=global_config.weird_quirk.max_tokens,
         )
-        # Initialize a LangFuseDSPYCallback and configure the LM instance for generation tracing
-        self.callback = LangFuseDSPYCallback(agent_signature)
-        dspy.configure(lm=self.lm, callbacks=[self.callback])
+        dspy.configure(lm=self.lm)
 
         # Agent Intiialization
         self.agent_init = dspy.ReAct(
@@ -39,7 +36,6 @@ class ReactAgent: # Renamed from ReactAgentWithMemory
         )
         self.agent = dspy.asyncify(self.agent_init)
 
-    @observe()
     @retry(
         retry=retry_if_exception_type(ServiceUnavailableError),
         stop=stop_after_attempt(global_config.llm_config.retry.max_attempts),
