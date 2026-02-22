@@ -130,7 +130,7 @@ Mark \"is_trans_woman\" true if the profile indicates transgender / trans woman 
 
     img_size_kb = len(image_b64) * 3 // 4 // 1024
     print(f"[GEMINI] POST {model} | image={screenshot_path} ({img_size_kb} KB) | temp=0.1 maxTokens=500")
-    print(f"[GEMINI] prompt={prompt[:120]}...")
+    print(f"[GEMINI] prompt=\n{prompt}")
 
     resp = requests.post(
         f"{url}?key={api_key}",
@@ -443,12 +443,21 @@ async def _run_one_iteration(
         ok, _ = adb.execute_like(xml)
         print(f"[NOTIFY] LIKE executed: ok={ok} notify_on_like={prefs.notify_on_like} group_jid={prefs.whatsapp_group_jid!r} notifier_enabled={notifier.enabled}")
         if ok and prefs.notify_on_like and prefs.whatsapp_group_jid:
+            # Copy screenshot to allowed media dir (OpenClaw blocks /tmp/)
+            notify_screenshot = None
+            if prefs.send_screenshot_with_like and screenshot_path:
+                import shutil
+                media_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "media", "screenshots")
+                os.makedirs(media_dir, exist_ok=True)
+                notify_screenshot = os.path.join(media_dir, f"like_{decision.name or 'unknown'}_{int(time.time())}.png")
+                shutil.copy2(screenshot_path, notify_screenshot)
+                print(f"[NOTIFY] copied screenshot to {notify_screenshot}")
             result = notifier.send_like_notification(
                 name=decision.name,
                 rating=decision.rating,
                 reason=decision.reason,
                 age=decision.age,
-                screenshot_path=screenshot_path if prefs.send_screenshot_with_like else None,
+                screenshot_path=notify_screenshot,
             )
             print(f"[NOTIFY] send_like_notification result: success={result.success} error={result.error}")
         else:
