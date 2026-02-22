@@ -10,13 +10,6 @@ class DatingStyle(Enum):
     ADVENTUROUS = "adventurous"
     UNKNOWN = "unknown"
 
-class Lifestyle(Enum):
-    ACTIVE = "active"
-    RELAXED = "relaxed"
-    PARTY = "party"
-    INTELLECTUAL = "intellectual"
-    UNKNOWN = "unknown"
-
 @dataclass
 class PhotoAnalysis:
     """Analysis results for a single photo"""
@@ -58,7 +51,7 @@ class Profile:
     party_frequency: Optional[int] = None  # 1-5 scale
     drug_usage: Optional[int] = None  # 1-5 scale
     dating_style: DatingStyle = DatingStyle.UNKNOWN
-    lifestyle: Lifestyle = Lifestyle.UNKNOWN
+    lifestyle: Optional[str] = None
     
     # Inferred attributes
     inferred_interests: list[str] = None
@@ -153,7 +146,7 @@ class Profile:
         # Implementation would analyze bio, prompts, and photo content
         return self.dating_style
     
-    def _infer_lifestyle(self) -> Lifestyle:
+    def _infer_lifestyle(self) -> Optional[str]:
         """
         Infers the lifestyle based on profile content and photos.
         """

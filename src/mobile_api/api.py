@@ -91,107 +91,101 @@ class HingeAPI:
         self.subject_pairs = self._parse_subjects_and_hearts()
 
     def _update_profile_info(self) -> None:
-        """Update profile information from the UI hierarchy, preserving existing values."""
+        """Update profile information from the UI hierarchy, preserving existing values.
+
+        Hinge UI structure (as of 2026):
+        - Name: in content-desc like "Skip Hannah" or "Hannah's photo"
+        - Detail chips: View with content-desc label (e.g. "Age") + sibling TextView with value
+        - Prompts: content-desc like "Prompt: Typical Sunday. Answer: Chilling and cuddling"
+        - Religion/other unlabelled: standalone TextViews (e.g. "Christian")
+        """
+        import re
+
         tree = ET.parse(self.xml_path)
         root = tree.getroot()
 
-        # First pass: collect all text nodes and their relationships
-        text_nodes = []
+        # 1. Extract name from "Skip {Name}" button content-desc
         for node in root.iter("node"):
-            text = node.get("text", "").strip()
-            content_desc = node.get("content-desc", "").strip()
-            bounds = node.get("bounds", "")
-            
-            if text or content_desc:
-                text_nodes.append((node, text, content_desc, bounds))
+            desc = node.get("content-desc", "")
+            m = re.match(r"Skip\s+([A-Za-z][A-Za-z\- ]{0,30})", desc)
+            if m:
+                self.profile_info.name = m.group(1).strip()
+                break
 
-        # Second pass: analyze text nodes for profile information
-        for node, text, content_desc, bounds in text_nodes:
-            # Extract name (usually in a TextView near the top)
-            if text and not text.lower() in ["more", "like", "skip"] and not text.isdigit():
-                # Check if this is likely a name (not a prompt or response)
+        # 2. Extract labelled detail chips: View(content-desc=label) + sibling TextView(text=value)
+        #    Pattern: parent View > child View(content-desc="Age") + child TextView(text="24")
+        _label_map = {
+            "age": "_age",
+            "height": "height",
+            "location": "location",
+            "job": "job",
+            "college or university": "university",
+            "home town": "hometown",
+            "dating intentions": "relationship_type",
+            "gender": "gender",
+            "sexuality": "_sexuality",
+            "religion": "religion",
+            "politics": "politics",
+        }
+
+        for node in root.iter("node"):
+            desc = (node.get("content-desc") or "").strip()
+            if not desc:
+                continue
+            desc_lower = desc.lower()
+
+            # Match against known labels
+            matched_field = None
+            for label_key, field_name in _label_map.items():
+                if desc_lower == label_key:
+                    matched_field = field_name
+                    break
+
+            if matched_field:
+                # Find the sibling TextView with the value
                 parent = node.getparent()
-                if parent is not None:
-                    parent_class = parent.get("class", "")
-                    if "TextView" in parent_class and not any(prompt in text.lower() for prompt in ["looking for", "relationship"]):
-                        self.profile_info.name = text
+                if parent is None:
+                    continue
+                for sibling in parent:
+                    if sibling is node:
+                        continue
+                    value = (sibling.get("text") or "").strip()
+                    if value:
+                        if matched_field == "_age" and value.isdigit():
+                            self.profile_info.age = int(value)
+                        elif matched_field == "_sexuality":
+                            pass  # Not stored in ProfileInfo currently
+                        elif matched_field == "gender":
+                            self.profile_info.gender = value.lower()
+                        elif hasattr(self.profile_info, matched_field):
+                            setattr(self.profile_info, matched_field, value)
+                        break
 
-            # Extract gender (usually in a TextView)
-            if text.lower() in ["he", "she", "they", "woman", "man"]:
-                self.profile_info.gender = text.lower()
-
-            # Extract prompts and responses by looking at the UI structure
-            # First, find all TextViews that might be prompt starters
-            if node.get("class") == "android.widget.TextView" and node.get("text"):
-                text = node.get("text", "").strip()
-                if text and text.lower() not in ["more", "like", "skip"]:
-                    # Check if this is a prompt starter
-                    first_text = text.lower()
-                    if any(phrase in first_text for phrase in [
-                        "dating me is like",
-                        "i won't shut up about",
-                        "i go crazy for",
-                        "my simple pleasures",
-                        "my most controversial opinion",
-                        "i bet you can't",
-                        "we'll get along if",
-                        "the way to win me over is",
-                        "unusual skills"
-                    ]):
-                        # Found a prompt starter, look for the response in siblings
-                        parent = node.getparent()
-                        if parent is not None:
-                            # Look for the response TextView
-                            for sibling in parent:
-                                if sibling.get("class") == "android.widget.TextView" and sibling != node:
-                                    response = sibling.get("text", "").strip()
-                                    if response:
-                                        prompt = f"{text} | {response}"
-                                        if prompt not in self.profile_info.prompts:
-                                            self.profile_info.prompts.append(prompt)
-                                        break
-
-        # Additional pass to find information in specific UI elements
+        # 3. Extract prompts from content-desc: "Prompt: X. Answer: Y"
         for node in root.iter("node"):
-            if node.get("class") == "android.view.View":
-                # Look for the profile info container
-                for child in node:
-                    if child.get("class") == "android.view.View":
-                        # Get the label (content-desc) from the first child
-                        for label_node in child:
-                            if label_node.get("class") == "android.view.View":
-                                label = label_node.get("content-desc", "").lower()
-                                # Get the value from the TextView that follows
-                                for value_node in child:
-                                    if value_node.get("class") == "android.widget.TextView":
-                                        value = value_node.get("text", "").strip()
-                                        if value:  # Only process if we have a value
-                                            if "age" in label and value.isdigit():
-                                                self.profile_info.age = int(value)
-                                            elif "height" in label:
-                                                self.profile_info.height = value
-                                            elif "location" in label:
-                                                self.profile_info.location = value
-                                            elif "job" in label:
-                                                self.profile_info.job = value
-                                            elif "college or university" in label:
-                                                self.profile_info.university = value
-                                            elif "home town" in label:
-                                                self.profile_info.hometown = value
-                                            elif "dating intentions" in label:
-                                                self.profile_info.relationship_type = value
-                                            elif "religion" in label:
-                                                self.profile_info.religion = value
-                                            elif "politics" in label:
-                                                self.profile_info.politics = value
+            desc = node.get("content-desc", "")
+            m = re.match(r"Prompt:\s*(.+?)\.\s*Answer:\s*(.+)", desc)
+            if m:
+                prompt = f"{m.group(1).strip()} | {m.group(2).strip()}"
+                if prompt not in self.profile_info.prompts:
+                    self.profile_info.prompts.append(prompt)
 
-        # Debug print to see what we found
-        print("\nDebug - Found profile info:")
-        print(f"Age: {self.profile_info.age}")
-        print(f"Height: {self.profile_info.height}")
-        print(f"Location: {self.profile_info.location}")
-        print(f"Job: {self.profile_info.job}")
-        print(f"University: {self.profile_info.university}")
+        # 4. Extract religion from unlabelled standalone TextViews in the detail chip area
+        #    These appear as TextViews without a labelled sibling (e.g. "Christian")
+        #    Only set if not already found via a labelled chip
+        if not self.profile_info.religion:
+            _known_religions = {
+                "christian", "catholic", "muslim", "jewish", "hindu",
+                "buddhist", "sikh", "agnostic", "atheist", "spiritual",
+            }
+            for node in root.iter("node"):
+                if node.get("class") == "android.widget.TextView":
+                    text = (node.get("text") or "").strip()
+                    if text.lower() in _known_religions:
+                        self.profile_info.religion = text
+                        break
+
+        print(f"\n[PROFILE] {self.profile_info}")
 
     def _extract_profile_info(self) -> ProfileInfo:
         """Extract profile information from the UI hierarchy."""

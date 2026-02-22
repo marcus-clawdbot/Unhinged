@@ -45,8 +45,8 @@ class Preferences:
     # Rating threshold (1-10 scale)
     rating_min_threshold: float = 6.0
     
-    # Body type filter
-    require_slim_athletic: bool = True
+    # Body type filter (1-10 scale; 0 = disabled)
+    body_type_min_score: float = 5.0
     
     # Ethnicity filter (None = disabled)
     ethnicity_allowed: Optional[list] = None
@@ -80,7 +80,7 @@ class Preferences:
         
         # Body type
         if "body_type" in data:
-            prefs.require_slim_athletic = data["body_type"].get("require_slim_athletic", prefs.require_slim_athletic)
+            prefs.body_type_min_score = float(data["body_type"].get("min_score", prefs.body_type_min_score))
         
         # Ethnicity
         if "ethnicity" in data:
@@ -155,7 +155,7 @@ class DecisionEngine:
             age: Profile age (can be None if extraction failed)
             ai_result: AI analysis result dict with keys like:
                 - rating: 1-10 score
-                - slim_athletic: bool
+                - body_type_score: 1-10
                 - ethnicity_ok: bool
                 - name: str
                 - reason: str
@@ -235,16 +235,19 @@ class DecisionEngine:
                 logger.warning(f"Invalid rating value: {rating}")
         
         # 3. Body type filter
-        if prefs.require_slim_athletic:
-            slim_athletic = ai_result.get("slim_athletic", True)  # Default to True if not specified
-            if slim_athletic is False:  # Explicit False check
-                return Decision(
-                    action="PASS",
-                    reason="Not slim/athletic body type",
-                    name=name,
-                    rating=rating,
-                    age=age,
-                )
+        body_score = ai_result.get("body_type_score")
+        if body_score is not None and prefs.body_type_min_score > 0:
+            try:
+                if float(body_score) < prefs.body_type_min_score:
+                    return Decision(
+                        action="PASS",
+                        reason=f"Body type score {body_score} below threshold ({prefs.body_type_min_score})",
+                        name=name,
+                        rating=rating,
+                        age=age,
+                    )
+            except (ValueError, TypeError):
+                pass
         
         # 4. Ethnicity filter (only if allowed list is specified)
         if prefs.ethnicity_allowed:

@@ -6,15 +6,15 @@ age:
   max: 35
 
 rating:
-  min_threshold: 6.0  # 1-10 scale
+  min_threshold: 7.0  # 1-10 scale
 
 body_type:
-  require_slim_athletic: false 
+  min_score: 5.0  # 1-10 scale (1=very overweight, 5=average, 7=fit, 10=very athletic)
 
 ethnicity:
   # Set allowed to null to disable ethnicity filtering
   # Or specify a list like: ["caucasian"]
-  allowed: ["caucasian", "unknown"] 
+  allowed: ["caucasian"] 
 
 notifications:
   # WhatsApp group JID for notifications

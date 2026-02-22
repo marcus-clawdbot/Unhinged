@@ -97,7 +97,7 @@ def _gemini_rate_profile(screenshot_path: str) -> Optional[dict]:
   \"is_profile\": true/false,
   \"name\": \"name or null if not visible\",
   \"is_trans_woman\": true/false,
-  \"slim_athletic\": true/false,
+  \"body_type_score\": 1-10,
   \"ethnicity\": \"description\",
   \"ethnicity_ok\": true/false,
   \"rating\": 1-10,
@@ -105,6 +105,8 @@ def _gemini_rate_profile(screenshot_path: str) -> Optional[dict]:
   \"red_flags\": [\"list of any red flags\"],
   \"reason\": \"brief reason\"
 }
+
+body_type_score: 1=very overweight, 5=average, 7=fit, 10=very athletic.
 
 If NOT a dating profile (home screen, other app, etc), set is_profile=false.
 
@@ -126,6 +128,10 @@ Mark \"is_trans_woman\" true if the profile indicates transgender / trans woman 
         "generationConfig": {"temperature": 0.1, "maxOutputTokens": 500},
     }
 
+    img_size_kb = len(image_b64) * 3 // 4 // 1024
+    print(f"[GEMINI] POST {model} | image={screenshot_path} ({img_size_kb} KB) | temp=0.1 maxTokens=500")
+    print(f"[GEMINI] prompt={prompt[:120]}...")
+
     resp = requests.post(
         f"{url}?key={api_key}",
         json=payload,
@@ -133,9 +139,13 @@ Mark \"is_trans_woman\" true if the profile indicates transgender / trans woman 
         timeout=30,
     )
 
+    print(f"[GEMINI] status={resp.status_code}")
+
     if resp.status_code == 429:
+        print("[GEMINI] rate limited (429)")
         return None
     if resp.status_code != 200:
+        print(f"[GEMINI] error body={resp.text[:300]}")
         return None
 
     result = resp.json()
@@ -153,8 +163,11 @@ Mark \"is_trans_woman\" true if the profile indicates transgender / trans woman 
         text = text.split("```")[1].split("```")[0].strip()
 
     try:
-        return json.loads(text)
+        parsed = json.loads(text)
+        print(f"[GEMINI] response={json.dumps(parsed, indent=2)}")
+        return parsed
     except Exception:
+        print(f"[GEMINI] JSON parse failed, raw={text[:300]}")
         return None
 
 
@@ -258,23 +271,13 @@ async def _run_one_iteration(
 ) -> tuple[bool, float]:
     """Returns (did_process_profile, last_gemini_ts)."""
 
+    # 1. Initial XML dump + basic checks
     xml = adb.get_ui_xml()
     if not xml:
         print("[WARN] No UI XML; skipping iteration")
         return False, last_gemini_ts
-    print(f"[DEBUG] UI XML length: {len(xml)}")
 
-    # Ensure we're on Discover tab to avoid automating on the wrong Hinge section.
-    print('[DEBUG] Calling ensure_discover_tab')
-    adb.ensure_discover_tab()
-    xml = adb.get_ui_xml() or xml
-    print(f'[DEBUG] After ensure_discover_tab, XML length: {len(xml)}')
-
-    # Always reset to top of profile before doing anything else.
-    adb.scroll_to_top()
-    xml = adb.get_ui_xml() or xml
-
-    # close blockers
+    # Close blockers first (before any navigation)
     if adb.is_like_modal_open(xml):
         adb.close_modal_if_open(xml)
         xml = adb.get_ui_xml() or xml
@@ -283,58 +286,43 @@ async def _run_one_iteration(
         xml = adb.get_ui_xml() or xml
 
     if not adb.is_hinge_profile(xml):
-        print("[DEBUG] is_hinge_profile returned False, opening Hinge")
         adb.open_hinge()
         time.sleep(2)
         xml = adb.get_ui_xml() or ""
         if not adb.is_hinge_profile(xml):
-            print("[DEBUG] Still not a Hinge profile after opening, skipping")
+            print("[WARN] Not a Hinge profile after opening; skipping")
             return False, last_gemini_ts
-    else:
-        print("[DEBUG] is_hinge_profile returned True")
 
-    screenshot_path = adb.capture_screenshot_fast()
+    # 2. Prime profile to reveal lazy-loaded detail chips (age, gender, etc.)
+    adb.prime_profile_details()
+    time.sleep(0.4)
 
-    # PRIME the profile: Hinge often lazy-loads age/details only after a small scroll.
-    # We scroll first, then re-dump UI and re-screenshot, then attempt age extraction.
-    try:
-        adb.prime_profile_details()
-        time.sleep(0.5)
-    except Exception:
-        pass
+    # 3. Capture the primed XML (has detail chips visible) for age extraction + profile info.
+    xml_primed = adb.get_ui_xml() or xml
+    xml_is_trans = _detect_trans_woman_from_xml(xml_primed)
 
-    xml2 = adb.get_ui_xml() or xml
-    screenshot_path2 = adb.capture_screenshot_fast() or screenshot_path
-
-    # Deterministic trans-woman detection from UI XML (more reliable than vision).
-    xml_is_trans = _detect_trans_woman_from_xml(xml2)
-
+    # 4. Age extraction from the primed XML (best-effort)
     age = None
-    # Age extractor should be best-effort; don't let OCR issues spam/kill loop.
-    if screenshot_path2:
-        try:
-            age = age_extractor.extract(xml2, screenshot_path2)
-        except Exception as e:
-            print(f"[WARN] age_extractor failed: {e}")
-            age = None
+    try:
+        age = age_extractor.extract(xml_primed)
+    except Exception as e:
+        print(f"[WARN] age_extractor failed: {e}")
 
-    # Fallback: try the original artifacts too
-    if age is None and screenshot_path:
-        try:
-            age = age_extractor.extract(xml, screenshot_path)
-        except Exception:
-            age = None
-
-    # fast age filter
+    # 5. Fast age filter — skip expensive analysis if age is out of range
     if age is not None and not engine.quick_age_filter(age):
         if not dry_run:
             adb.execute_skip(xml)
         return True, last_gemini_ts
 
-    # expensive analysis
+    # 6. Save primed XML to file for HingeAPI parsing
     dump_path = adb.get_ui_dump(0)
     api = HingeAPI(dump_path)
     profile_info = api.get_profile_info()
+
+    # 7. Scroll to top for screenshot (main photo visible for Gemini)
+    adb.scroll_to_top(max_swipes=3)
+    time.sleep(0.3)
+    screenshot_path = adb.capture_screenshot_fast()
 
     # Fallback: if AgeExtractor couldn't find age but HingeAPI did, use it.
     if age is None:
@@ -357,7 +345,7 @@ async def _run_one_iteration(
             return True, last_gemini_ts
 
         last_gemini_ts = _sleep_rate_limited(last_gemini_ts, prefs.max_requests_per_minute)
-        gem = _gemini_rate_profile(screenshot_path2)
+        gem = _gemini_rate_profile(screenshot_path)
         rating = gem.get("rating") if isinstance(gem, dict) else None
         if rating is None:
             if not dry_run:
@@ -379,7 +367,7 @@ async def _run_one_iteration(
             "age": age,
             "is_trans_woman": bool(xml_is_trans),
             "rating": rating,
-            "slim_athletic": bool(gem.get("slim_athletic")) if isinstance(gem, dict) and gem.get("slim_athletic") is not None else True,
+            "body_type_score": gem.get("body_type_score") if isinstance(gem, dict) else None,
             "ethnicity_ok": eth_ok,
             "ethnicity": eth,
             "reason": gem.get("reason") if isinstance(gem, dict) else "Gemini fast-mode rating",
@@ -414,7 +402,7 @@ async def _run_one_iteration(
             "red_flags": [],
             # defaults; may be overwritten
             "rating": None,
-            "slim_athletic": True,
+            "body_type_score": None,
             "ethnicity_ok": True,
             "ethnicity": None,
         }
@@ -440,12 +428,12 @@ async def _run_one_iteration(
     # Always print a concise decision line (especially important for dry-run).
     # Example: [DRY] age=34 rating=7 slim=True eth_ok=True => LIKE (reason...)
     rating = ai_result.get("rating")
-    slim = ai_result.get("slim_athletic")
+    body_score = ai_result.get("body_type_score")
     eth_ok = ai_result.get("ethnicity_ok")
     name = ai_result.get("name")
     prefix = "[DRY]" if dry_run else "[LIVE]"
     print(
-        f"{prefix} name={name!r} age={age} rating={rating} slim_athletic={slim} ethnicity_ok={eth_ok} => {decision.action} :: {decision.reason}"
+        f"{prefix} name={name!r} age={age} rating={rating} body_score={body_score} ethnicity_ok={eth_ok} => {decision.action} :: {decision.reason}"
     )
 
     if dry_run:

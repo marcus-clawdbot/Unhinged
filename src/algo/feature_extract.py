@@ -1,6 +1,6 @@
 import dspy
 from typing import Optional, Dict, Any
-from src.models.profile import Profile, DatingStyle, Lifestyle, Education, PhotoAnalysis
+from src.models.profile import Profile, DatingStyle, Education, PhotoAnalysis
 from src.agent.react_agent import ReactAgent
 from datetime import datetime
 from PIL import Image
@@ -208,7 +208,7 @@ async def analyze_profile(
         party_frequency=profile_result.party_frequency,
         drug_usage=profile_result.drug_usage,
         dating_style=map_relationship_to_dating_style(profile_info.relationship_type),
-        lifestyle=Lifestyle(profile_result.lifestyle.lower()) if profile_result.lifestyle else Lifestyle.UNKNOWN,
+        lifestyle=profile_result.lifestyle,
         inferred_interests=profile_result.inferred_interests or [],
         inferred_personality_traits=profile_result.inferred_personality_traits or []
     )
