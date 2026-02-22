@@ -9,7 +9,7 @@ rating:
   min_threshold: 7.0  # 1-10 scale
 
 body_type:
-  min_score: 5.0  # 1-10 scale (1=very overweight, 5=average, 7=fit, 10=very athletic)
+  allowed: ["slim_fit", "average"]  # options: slim_fit, average, heavy
 
 ethnicity:
   # Set allowed to null to disable ethnicity filtering

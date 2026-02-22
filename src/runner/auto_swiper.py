@@ -97,7 +97,7 @@ def _gemini_rate_profile(screenshot_path: str) -> Optional[dict]:
   \"is_profile\": true/false,
   \"name\": \"name or null if not visible\",
   \"is_trans_woman\": true/false,
-  \"body_type_score\": 1-10,
+  \"body_type\": \"slim_fit\" or \"average\" or \"heavy\",
   \"ethnicity\": \"description\",
   \"ethnicity_ok\": true/false,
   \"rating\": 1-10,
@@ -106,7 +106,7 @@ def _gemini_rate_profile(screenshot_path: str) -> Optional[dict]:
   \"reason\": \"brief reason\"
 }
 
-body_type_score: 1=very overweight, 5=average, 7=fit, 10=very athletic.
+body_type must be exactly one of: \"slim_fit\" (slim, athletic, toned), \"average\" (average build), \"heavy\" (visibly overweight). Pick one — do not hedge.
 
 If NOT a dating profile (home screen, other app, etc), set is_profile=false.
 
@@ -367,7 +367,7 @@ async def _run_one_iteration(
             "age": age,
             "is_trans_woman": bool(xml_is_trans),
             "rating": rating,
-            "body_type_score": gem.get("body_type_score") if isinstance(gem, dict) else None,
+            "body_type": gem.get("body_type") if isinstance(gem, dict) else None,
             "ethnicity_ok": eth_ok,
             "ethnicity": eth,
             "reason": gem.get("reason") if isinstance(gem, dict) else "Gemini fast-mode rating",
@@ -402,7 +402,7 @@ async def _run_one_iteration(
             "red_flags": [],
             # defaults; may be overwritten
             "rating": None,
-            "body_type_score": None,
+            "body_type": None,
             "ethnicity_ok": True,
             "ethnicity": None,
         }
@@ -428,12 +428,12 @@ async def _run_one_iteration(
     # Always print a concise decision line (especially important for dry-run).
     # Example: [DRY] age=34 rating=7 slim=True eth_ok=True => LIKE (reason...)
     rating = ai_result.get("rating")
-    body_score = ai_result.get("body_type_score")
+    body_type = ai_result.get("body_type")
     eth_ok = ai_result.get("ethnicity_ok")
     name = ai_result.get("name")
     prefix = "[DRY]" if dry_run else "[LIVE]"
     print(
-        f"{prefix} name={name!r} age={age} rating={rating} body_score={body_score} ethnicity_ok={eth_ok} => {decision.action} :: {decision.reason}"
+        f"{prefix} name={name!r} age={age} rating={rating} body_type={body_type} ethnicity_ok={eth_ok} => {decision.action} :: {decision.reason}"
     )
 
     if dry_run:

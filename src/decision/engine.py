@@ -45,8 +45,8 @@ class Preferences:
     # Rating threshold (1-10 scale)
     rating_min_threshold: float = 6.0
     
-    # Body type filter (1-10 scale; 0 = disabled)
-    body_type_min_score: float = 5.0
+    # Body type filter (allowed classes; empty list = disabled)
+    body_type_allowed: list = field(default_factory=lambda: ["slim_fit", "average"])
     
     # Ethnicity filter (None = disabled)
     ethnicity_allowed: Optional[list] = None
@@ -80,7 +80,9 @@ class Preferences:
         
         # Body type
         if "body_type" in data:
-            prefs.body_type_min_score = float(data["body_type"].get("min_score", prefs.body_type_min_score))
+            allowed = data["body_type"].get("allowed")
+            if allowed is not None:
+                prefs.body_type_allowed = [s.lower().strip() for s in allowed]
         
         # Ethnicity
         if "ethnicity" in data:
@@ -155,7 +157,7 @@ class DecisionEngine:
             age: Profile age (can be None if extraction failed)
             ai_result: AI analysis result dict with keys like:
                 - rating: 1-10 score
-                - body_type_score: 1-10
+                - body_type: "slim_fit", "average", or "heavy"
                 - ethnicity_ok: bool
                 - name: str
                 - reason: str
@@ -235,19 +237,16 @@ class DecisionEngine:
                 logger.warning(f"Invalid rating value: {rating}")
         
         # 3. Body type filter
-        body_score = ai_result.get("body_type_score")
-        if body_score is not None and prefs.body_type_min_score > 0:
-            try:
-                if float(body_score) < prefs.body_type_min_score:
-                    return Decision(
-                        action="PASS",
-                        reason=f"Body type score {body_score} below threshold ({prefs.body_type_min_score})",
-                        name=name,
-                        rating=rating,
-                        age=age,
-                    )
-            except (ValueError, TypeError):
-                pass
+        body_type = ai_result.get("body_type")
+        if body_type and prefs.body_type_allowed:
+            if body_type.lower().strip() not in prefs.body_type_allowed:
+                return Decision(
+                    action="PASS",
+                    reason=f"Body type '{body_type}' not in allowed list ({prefs.body_type_allowed})",
+                    name=name,
+                    rating=rating,
+                    age=age,
+                )
         
         # 4. Ethnicity filter (only if allowed list is specified)
         if prefs.ethnicity_allowed:
