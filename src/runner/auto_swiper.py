@@ -458,6 +458,7 @@ async def _run_one_iteration(
                 reason=decision.reason,
                 age=decision.age,
                 screenshot_path=notify_screenshot,
+                ai_result=ai_result,
             )
             print(f"[NOTIFY] send_like_notification result: success={result.success} error={result.error}")
         else:

@@ -46,17 +46,18 @@ class WhatsAppNotifier:
         self.timeout = timeout
     
     def send_like_notification(
-        self, 
+        self,
         name: Optional[str] = None,
         rating: Optional[float] = None,
         reason: Optional[str] = None,
         age: Optional[int] = None,
         screenshot_path: Optional[str] = None,
         message: Optional[str] = None,
+        ai_result: Optional[dict] = None,
     ) -> NotificationResult:
         """
         Send a like notification.
-        
+
         Args:
             name: Profile name
             rating: Profile rating (1-10)
@@ -64,30 +65,45 @@ class WhatsAppNotifier:
             age: Profile age
             screenshot_path: Optional screenshot to attach
             message: Optional gigachad message that was sent
-            
+            ai_result: Full Gemini analysis dict
+
         Returns:
             NotificationResult
         """
         if not self.enabled:
             logger.debug("Notifications disabled, skipping")
             return NotificationResult(success=True)
-        
+
         # Build notification message
         parts = ["✅ *LIKED"]
         if name:
             parts[0] += f": {name}*"
         else:
             parts[0] += "*"
-        
+
         if age:
             parts.append(f"Age: {age}")
-        if rating is not None:
-            parts.append(f"Rating: {rating}/10")
-        if reason:
-            parts.append(f"Reason: {reason}")
+
+        # Include all Gemini output
+        if ai_result:
+            for key in ("rating", "body_type", "ethnicity", "vibe", "reason", "red_flags"):
+                val = ai_result.get(key)
+                if val is not None:
+                    if key == "rating":
+                        parts.append(f"Rating: {val}/10")
+                    elif key == "red_flags" and isinstance(val, list) and val:
+                        parts.append(f"Red flags: {', '.join(str(f) for f in val)}")
+                    elif key != "red_flags":
+                        parts.append(f"{key.replace('_', ' ').title()}: {val}")
+        else:
+            if rating is not None:
+                parts.append(f"Rating: {rating}/10")
+            if reason:
+                parts.append(f"Reason: {reason}")
+
         if message:
             parts.append(f"Message: _{message}_")
-        
+
         text = "\n".join(parts)
         
         # Send with or without image
